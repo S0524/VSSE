@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>吸血鬼幸存者 存档编辑器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif;
+            padding: 1em 0.8em;
+            background: #fff;
+            color: #333;
+        }
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: #111;
+                color: #c9d1d9;
+            }
+            textarea {
+                background: #222;
+                color: #c9d1d9;
+                border: 1px solid #444;
+            }
+            button, .file-btn {
+                background: #333;
+                color: #c9d1d9;
+                border: 1px solid #555;
+            }
+            .file-tip {
+                color: #999;
+            }
+        }
+        h1 {
+            font-size: 1.5em;
+            margin-bottom: 0.5em;
+            text-align: center;
+        }
+        .update-info {
+            font-size: 0.8em;
+            color: #666;
+            text-align: center;
+            margin-bottom: 1.2em;
+        }
+        .upload-area {
+            margin-bottom: 1em;
+        }
+        .upload-label {
+            font-size: 1em;
+            display: block;
+            margin-bottom: 0.5em;
+        }
+        .file-btn-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.5em;
+            margin-bottom: 0.5em;
+        }
+        .file-btn {
+            padding: 0.5em 1em;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background: #f5f5f5;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .file-status {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .paste-tip {
+            font-size: 0.9em;
+            color: #666;
+        }
+        textarea {
+            width: 100%;
+            min-height: 250px;
+            padding: 0.8em;
+            font-family: monospace;
+            font-size: 0.9em;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            resize: vertical;
+            margin-bottom: 0.8em;
+        }
+        #error {
+            color: #f44336;
+            font-size: 0.9em;
+            margin-bottom: 0.8em;
+            min-height: 1.2em;
+        }
+        #btn-download {
+            width: 100%;
+            padding: 0.8em 0;
+            font-size: 1em;
+            border-radius: 4px;
+            border: none;
+            background: #4CAF50;
+            color: #fff;
+            cursor: pointer;
+        }
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>吸血鬼幸存者 存档编辑器</h1>
+    <div class="update-info">
+        最后更新:2026年1月21日 — <a href="https://github.com/S0524/VSSE" style="color:#2196F3">源码</a>
+    </div>
+
+    <div class="upload-area">
+        <label class="upload-label">上传存档文件：</label>
+        <div class="file-btn-wrap">
+            <label class="file-btn" for="file-upload">选择文件</label>
+            <span class="file-status" id="file-status">未选择文件</span>
+        </div>
+        <input type="file" id="file-upload" />
+        <p class="paste-tip">或在下方粘贴存档内容：</p>
+    </div>
+
+    <textarea id="save-content"></textarea>
+    <div id="error"></div>
+    <button id="btn-download" type="button">下载存档</button>
+
+    <script>
+        const fileUpload = document.getElementById('file-upload');
+        const fileStatus = document.getElementById('file-status');
+        const textarea = document.getElementById('save-content');
+        const error = document.getElementById('error');
+        const btnDownload = document.getElementById('btn-download');
+        fileUpload.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                fileStatus.textContent = e.target.files[0].name;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    textarea.value = ev.target.result;
+                    realtimeFormat();
+                };
+                reader.readAsText(e.target.files[0]);
+            } else {
+                fileStatus.textContent = "未选择文件";
+            }
+        });
+        const tryParseJson = (t) => { try { return JSON.parse(t); } catch { return undefined; } };
+        const sha256 = (text) => crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(buf2hex);
+        const buf2hex = (buffer) => [...new Uint8Array(buffer)].map(x => x.toString(16).padStart(2, '0')).join('');
+        const formatJson = (json) => JSON.stringify(json, null, 2).replace('"checksum": "', '"checksum":"');
+
+        // 实时格式化
+        const realtimeFormat = () => {
+            error.textContent = '';
+            const json = tryParseJson(textarea.value);
+            if (!json) {
+                error.textContent = '错误：无效的JSON格式';
+                return;
+            }
+            textarea.value = formatJson(json);
+        };
+
+        // 计算金蛋
+        const calculateGoldenEggs = (json) => {
+            if (json.Characters && typeof json.Characters === 'object') {
+                let totalEggs = 0;
+                Object.values(json.Characters).forEach(char => {
+                    if (char && typeof char.eggs === 'number' && char.eggs >= 0) totalEggs += char.eggs;
+                });
+                json.GoldenEggs = totalEggs;
+            }
+        };
+        const processBeforeDownload = async () => {
+            error.textContent = '';
+            const json = tryParseJson(textarea.value);
+            if (!json) {
+                error.textContent = '错误：无效的JSON格式，无法下载';
+                return null;
+            }
+            try {
+                calculateGoldenEggs(json);
+                json.checksum = '';
+                const newChecksum = await sha256(formatJson(json));
+                json.checksum = newChecksum;
+                return formatJson(json);
+            } catch (e) {
+                error.textContent = `下载失败：${e.message}`;
+                return null;
+            }
+        };
+
+
+        textarea.addEventListener('input', realtimeFormat);
+
+        btnDownload.addEventListener('click', async () => {
+            const validContent = await processBeforeDownload();
+            if (!validContent) return;
+            const url = window.URL.createObjectURL(new Blob([validContent]));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'SaveData.sav';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
